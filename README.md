@@ -23,7 +23,7 @@ FastAPI + Tailwind CSS를 사용한 커뮤니티 플랫폼 프론트엔드
 ---
 
 ### 2. 회원가입 페이지
-**경로:** `/signup``
+**경로:** `/signup`
 
 ![회원가입 페이지](./images/signup_page.png)
 
