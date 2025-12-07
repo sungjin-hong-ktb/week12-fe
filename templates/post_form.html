@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}게시글 작성 - 아무 말 대잔치{% endblock %}
+
+{% block header_left %}
+<button class="absolute left-5 top-1/2 -translate-y-1/2 bg-none border-none text-xl cursor-pointer" onclick="history.back()">‹</button>
+{% endblock %}
+
+{% block header_right %}
+<div class="user-icon absolute right-5 top-1/2 -translate-y-1/2 w-[30px] h-[30px] rounded-full bg-gray-400 cursor-pointer bg-cover bg-center" id="userIcon"></div>
+<div class="dropdown-menu absolute right-5 top-[60px] bg-white border border-gray-300 rounded shadow-lg hidden z-50 w-40" id="dropdownMenu">
+    <button onclick="location.href='/profile/edit'" class="block w-full text-left px-5 py-3 hover:bg-gray-100 text-sm">회원정보수정</button>
+    <button onclick="location.href='/password/edit'" class="block w-full text-left px-5 py-3 hover:bg-gray-100 text-sm">비밀번호수정</button>
+    <button onclick="api.auth.logout()" class="block w-full text-left px-5 py-3 hover:bg-gray-100 text-sm">로그아웃</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-[700px] mx-auto p-5">
+    <h2 class="text-center text-xl font-bold mb-8 border-b border-gray-200 pb-4" id="formTitle">게시글 작성</h2>
+
+    <form id="postForm" class="flex flex-col gap-5">
+        <div class="form-group">
+            <label for="title" class="block mb-2 font-bold text-sm">제목<span class="text-red-500">*</span></label>
+            <input type="text" id="title" name="title" placeholder="제목을 입력해주세요. (최대 26글자)" maxlength="26"
+                   class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-[#7F6AEE] bg-gray-50">
+            <span class="helper-text text-xs text-red-500 mt-1 hidden" id="titleHelper"></span>
+        </div>
+
+        <div class="form-group">
+            <label for="content" class="block mb-2 font-bold text-sm">내용<span class="text-red-500">*</span></label>
+            <textarea id="content" name="content" placeholder="내용을 입력해주세요."
+                      class="w-full p-3 border border-gray-300 rounded min-h-[300px] resize-y focus:outline-none focus:border-[#7F6AEE] bg-gray-50"></textarea>
+            <span class="helper-text text-xs text-red-500 mt-1 hidden" id="contentHelper"></span>
+        </div>
+
+        <div class="form-group">
+            <label class="block mb-2 font-bold text-sm">이미지</label>
+            <div class="flex items-center gap-2">
+                <label for="imageInput" class="cursor-pointer bg-[#E0E0E0] border border-black text-black px-3 py-1.5 rounded text-xs whitespace-nowrap">파일 선택</label>
+                <span id="fileName" class="text-gray-500 text-sm flex-1">파일을 선택해주세요.</span>
+                <button type="button" id="removeImageBtn" class="hidden bg-red-100 border border-red-300 text-red-600 px-3 py-1.5 rounded text-xs whitespace-nowrap hover:bg-red-200" onclick="removeImage()">기존 파일 삭제</button>
+                <input type="file" id="imageInput" accept="image/*" class="hidden">
+            </div>
+
+            <div id="imagePreview" class="hidden mt-4 p-2 border border-gray-200 rounded bg-gray-50">
+                <p class="text-xs text-gray-500 mb-2">미리보기:</p>
+                <img src="" alt="Preview" class="max-w-full max-h-[300px] rounded">
+            </div>
+        </div>
+
+        <div class="text-center mt-6">
+            <button type="submit" class="w-full bg-[#ACA0EB] text-white p-3 rounded transition-all text-base font-medium cursor-not-allowed" id="submitBtn" disabled>완료</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    if (!utils.checkAuth()) {
+        throw new Error('Unauthorized');
+    }
+
+    const postId = window.location.pathname.includes('/edit') 
+        ? window.location.pathname.split('/')[2] 
+        : null;
+    
+    const isEditMode = !!postId;
+    const formTitle = document.getElementById('formTitle');
+    const postForm = document.getElementById('postForm');
+    const titleInput = document.getElementById('title');
+    const contentInput = document.getElementById('content');
+    const submitBtn = document.getElementById('submitBtn');
+    const imageInput = document.getElementById('imageInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const fileNameSpan = document.getElementById('fileName');
+    const removeImageBtn = document.getElementById('removeImageBtn');
+
+    let selectedImage = null;
+    let existingImageUrl = null;
+    let imageRemoved = false;
+
+    function checkFormValidity() {
+        const title = titleInput.value.trim();
+        const content = contentInput.value.trim();
+
+        if (title && content) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('bg-[#ACA0EB]', 'cursor-not-allowed');
+            submitBtn.classList.add('bg-[#7F6AEE]', 'hover:opacity-90');
+        } else {
+            submitBtn.disabled = true;
+            submitBtn.classList.remove('bg-[#7F6AEE]', 'hover:opacity-90');
+            submitBtn.classList.add('bg-[#ACA0EB]', 'cursor-not-allowed');
+        }
+    }
+
+    titleInput.addEventListener('input', checkFormValidity);
+    contentInput.addEventListener('input', checkFormValidity);
+
+    if (isEditMode) {
+        formTitle.textContent = '게시글 수정';
+        submitBtn.textContent = '수정하기';
+        loadPostData();
+    }
+
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (file.size > 10 * 1024 * 1024) {
+                utils.showError('이미지 파일 크기는 10MB 이하여야 합니다');
+                imageInput.value = '';
+                fileNameSpan.textContent = '파일을 선택해주세요.';
+                return;
+            }
+            
+            fileNameSpan.textContent = file.name;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.querySelector('img').src = e.target.result;
+                imagePreview.classList.remove('hidden');
+                selectedImage = file;
+            };
+            reader.readAsDataURL(file);
+        } else {
+            fileNameSpan.textContent = '파일을 선택해주세요.';
+            imagePreview.classList.add('hidden');
+            selectedImage = null;
+        }
+    });
+
+    async function loadPostData() {
+        try {
+            const post = await api.posts.get(postId);
+            titleInput.value = post.title;
+            contentInput.value = post.content;
+            checkFormValidity();
+
+            if (post.image_url) {
+                existingImageUrl = post.image_url;
+                imagePreview.querySelector('img').src = post.image_url;
+                imagePreview.classList.remove('hidden');
+                fileNameSpan.textContent = '기존 파일이 있습니다.';
+                removeImageBtn.classList.remove('hidden');
+            }
+        } catch (error) {
+            console.error('Load post error:', error);
+            utils.showError('게시글 정보를 불러오는데 실패했습니다');
+            history.back();
+        }
+    }
+
+    function removeImage() {
+        existingImageUrl = null;
+        imageRemoved = true;
+        selectedImage = null;
+        imageInput.value = '';
+        imagePreview.classList.add('hidden');
+        fileNameSpan.textContent = '파일을 선택해주세요.';
+        removeImageBtn.classList.add('hidden');
+    }
+
+    postForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const title = titleInput.value.trim();
+        const content = contentInput.value.trim();
+
+        let hasError = false;
+
+        if (!title) {
+            document.getElementById('titleHelper').textContent = '제목을 입력해주세요';
+            document.getElementById('titleHelper').classList.remove('hidden');
+            document.getElementById('titleHelper').classList.add('block');
+            hasError = true;
+        } else {
+            document.getElementById('titleHelper').classList.add('hidden');
+            document.getElementById('titleHelper').classList.remove('block');
+        }
+
+        if (!content) {
+            document.getElementById('contentHelper').textContent = '내용을 입력해주세요';
+            document.getElementById('contentHelper').classList.remove('hidden');
+            document.getElementById('contentHelper').classList.add('block');
+            hasError = true;
+        } else {
+            document.getElementById('contentHelper').classList.add('hidden');
+            document.getElementById('contentHelper').classList.remove('block');
+        }
+
+        if (hasError) return;
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = '처리 중...';
+
+        try {
+            let imageUrl = existingImageUrl;
+
+            if (imageRemoved) {
+                imageUrl = null;
+            } else if (selectedImage) {
+                const uploadResult = await api.files.upload(selectedImage);
+                imageUrl = uploadResult.url;
+            }
+
+            const postData = {
+                title: title,
+                content: content,
+                image_url: imageUrl
+            };
+
+            if (isEditMode) {
+                await api.posts.update(postId, postData);
+                utils.showSuccess('게시글이 수정되었습니다');
+                location.href = `/posts/${postId}`;
+            } else {
+                await api.posts.create(postData);
+                utils.showSuccess('게시글이 작성되었습니다');
+                location.href = '/posts';
+            }
+        } catch (error) {
+            console.error('Submit post error:', error);
+            utils.showError(error.message || '게시글 저장에 실패했습니다');
+            submitBtn.disabled = false;
+            submitBtn.textContent = '완료';
+        }
+    });
+</script>
+{% endblock %}

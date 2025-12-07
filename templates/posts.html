@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}아무 말 대잔치{% endblock %}
+
+{% block header_right %}
+<div class="user-icon absolute right-5 top-1/2 -translate-y-1/2 w-[30px] h-[30px] rounded-full bg-gray-400 cursor-pointer bg-cover bg-center" id="userIcon"></div>
+<div class="dropdown-menu absolute right-5 top-[60px] bg-white border border-gray-300 rounded shadow-lg hidden z-50 w-40" id="dropdownMenu">
+    <button onclick="location.href='/profile/edit'" class="block w-full text-left px-5 py-3 hover:bg-gray-100 text-sm">회원정보수정</button>
+    <button onclick="location.href='/password/edit'" class="block w-full text-left px-5 py-3 hover:bg-gray-100 text-sm">비밀번호수정</button>
+    <button onclick="api.auth.logout()" class="block w-full text-left px-5 py-3 hover:bg-gray-100 text-sm">로그아웃</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-[700px] mx-auto p-5">
+    <h2 class="text-center text-xl font-bold mb-8">안녕하세요,<br>아무 말 대잔치 <span class="font-extrabold">게시판</span> 입니다.</h2>
+
+    <!-- 상단 버튼 영역 -->
+    <div class="flex justify-end mb-4">
+        <button class="bg-[#7F6AEE] text-white px-5 py-2 rounded text-sm hover:opacity-90 transition-opacity" onclick="location.href='/posts/create'">
+            게시글 작성
+        </button>
+    </div>
+
+    <!-- 게시글 목록 (리스트 형태 복원) -->
+    <div id="postsList" class="flex flex-col gap-3">
+        <div class="text-center py-10 text-gray-500">로딩 중...</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    if (!utils.checkAuth()) {
+        throw new Error('Unauthorized');
+    }
+
+    async function loadPosts() {
+        try {
+            const posts = await api.posts.list();
+            const postsList = document.getElementById('postsList');
+
+            if (posts && posts.length > 0) {
+                postsList.innerHTML = '';
+                posts.forEach(post => {
+                    const authorImageHtml = post.author.profile_image 
+                        ? `<img src="${post.author.profile_image}" class="w-full h-full object-cover rounded-full">` 
+                        : '';
+
+                    // 원래 구조에 가깝게 복원: 카드보다는 깔끔한 박스 형태
+                    const postHtml = `
+                        <div class="bg-white border border-gray-200 rounded p-4 cursor-pointer hover:bg-gray-50 transition-colors" onclick="location.href='/posts/${post.id}'">
+                            <h3 class="text-lg font-bold text-gray-900 mb-2 truncate">${escapeHtml(post.title)}</h3>
+                            
+                            <div class="flex justify-between items-center text-xs text-gray-500 mt-3">
+                                <div class="flex items-center gap-4">
+                                    <span>좋아요 ${utils.formatNumber(post.like_count)}</span>
+                                    <span>댓글 ${utils.formatNumber(post.comment_count)}</span>
+                                    <span>조회수 ${utils.formatNumber(post.view_count)}</span>
+                                </div>
+                                <div class="text-gray-400">${utils.formatDate(post.created_at)}</div>
+                            </div>
+                            
+                            <div class="border-t border-gray-100 mt-3 pt-3 flex items-center">
+                                <div class="w-6 h-6 rounded-full bg-gray-200 mr-2 overflow-hidden">
+                                    ${authorImageHtml}
+                                </div>
+                                <span class="text-sm text-gray-700">${escapeHtml(post.author.nickname)}</span>
+                            </div>
+                        </div>
+                    `;
+                    postsList.innerHTML += postHtml;
+                });
+            } else {
+                postsList.innerHTML = '<div class="text-center py-10 text-gray-500">게시글이 없습니다.</div>';
+            }
+        } catch (error) {
+            console.error('Load posts error:', error);
+            utils.showError('게시글 목록을 불러오는데 실패했습니다');
+        }
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    loadPosts();
+</script>
+{% endblock %}
